@@ -7,10 +7,7 @@ import org.example.domain.entitiy.Node;
 import org.example.repository.NodeRepository;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 @Service
 @AllArgsConstructor
@@ -24,23 +21,26 @@ public class NodeService {
         }
 
         NodeDTO nodeDto = new NodeDTO();
+        nodeDto.setId(node.getId());
         nodeDto.setName(node.getName());
         nodeDto.setNodeType(node.getNodeType());
-        nodeDto.setRelatedNodes(new HashMap<>());
+        nodeDto.setOutgoingConnections(new HashMap<>());
+        nodeDto.setIncomingConnections(new ArrayList<>());
+        nodeDto.setArguments(new HashSet<>());
         cache.put(node.getId(), nodeDto);
 
         node.getNodeConnections().stream().map(connection -> Map.entry(connection.getTargetNode(), connection.getConnectionType()))
         .forEach(entry -> {
             NodeDTO targetNodeDto = convertToDto(entry.getKey(), cache);
-            nodeDto.getRelatedNodes().put(targetNodeDto, entry.getValue());
+            nodeDto.getOutgoingConnections().put(targetNodeDto, entry.getValue());
+            targetNodeDto.getIncomingConnections().add(nodeDto);
         });
 
         return nodeDto;
     }
 
     public List<NodeDTO> getNodesFromSection(SectionDTO sectionDTO) {
-        List<Node> nodes = nodeRepository.findAll();
-        nodes = nodes.stream()
+        List<Node> nodes = nodeRepository.findAll().stream()
                 .filter(node -> Objects.equals(node.getSection().getId(), sectionDTO.getId()))
                 .toList();
         Map<Long, NodeDTO> cache = new HashMap<>();

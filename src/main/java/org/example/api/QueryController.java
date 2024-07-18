@@ -2,16 +2,13 @@ package org.example.api;
 
 import lombok.AllArgsConstructor;
 import org.example.domain.DTO.*;
-import org.example.service.KnowledgeBaseService;
-import org.example.service.NodeService;
-import org.example.service.SectionService;
-import org.example.service.UserService;
+import org.example.service.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RestController;  
 
 import java.util.List;
 
@@ -23,13 +20,15 @@ public class QueryController {
     private SectionService sectionService;
     private NodeService nodeService;
     private UserService userService;
+    private QuerySolver querySolver;
 
     @GetMapping("/solve")
-    public ResponseEntity<AnswerDTO> solve(@RequestBody RequestDTO query) {
-        if (!checkAccess(query.getUserId(), query.getKbId())) {
+    public ResponseEntity<AnswerDTO> solve(@RequestBody RequestDTO request) {
+        if (!checkAccess(request.getUserId(), request.getKbId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
         }
-        // Вызов сервиса-решателя
+
+        querySolver.solve(request, getAllNodesOfKnowledgeBase(request.getKbId()));
 
         AnswerDTO answer = new AnswerDTO();
         // упаковка ответа алгоритма

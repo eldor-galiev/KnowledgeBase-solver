@@ -1,5 +1,6 @@
 package org.example.domain.DTO;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,14 +8,17 @@ import java.util.List;
 
 @Getter
 @Setter
+@AllArgsConstructor
 public class RequestDTO {
-    private Long userId;
-    private Long kbId;
-    private List<Parameter> parameters;
+    private final Long userId;
+    private final Long kbId;
+    private final List<Parameter> parameters;
+    private final boolean HypothesesSetDifferentiationNeeded;
+    private final boolean HypothesesSetMinimizationNeeded;
 
     @Getter
     public class Parameter {
-        private String name;
-        private String value;
+        private Long featureId;
+        private String attributeValue;
     }
 }
