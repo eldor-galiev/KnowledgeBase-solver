@@ -4,17 +4,18 @@ import org.example.domain.DTO.NodeDTO;
 import org.example.domain.DTO.RequestDTO;
 import org.example.domain.types.ConnectionType;
 import org.example.domain.types.NodeType;
+import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Service
 public class QuerySolver {
-
-    private Set<NodeDTO> activatedFeatures;
-    private Set<NodeDTO> nonactivatedFeatures;
-    private Set<NodeDTO> activatedHypotheses;
-    private Set<NodeDTO> solutions;
-    private Set<NodeDTO> possibleArguments;
+    private final Set<NodeDTO> activatedFeatures = new HashSet<>();
+    private final Set<NodeDTO> inactivateFeatures = new HashSet<>();
+    private final Set<NodeDTO> activatedHypotheses = new HashSet<>();
+    private final Set<NodeDTO> solutions = new HashSet<>();
+    private final Set<NodeDTO> possibleArguments = new HashSet<>();
 
     public List<NodeDTO> solve(RequestDTO request, List<NodeDTO> nodes) {
         List<NodeDTO> allFeatures = nodes.stream().filter(node -> node.getNodeType() == NodeType.FEATURE).toList();
@@ -36,19 +37,16 @@ public class QuerySolver {
 
         reduceHypothesesSetByMissingArguments(); // Шаг 5
 
-        if (activatedHypotheses.size() <= 1) { // Шаг 6
-            solutions.addAll(activatedHypotheses);
-        }
+        solutions.addAll(activatedHypotheses); // Шаг 6
 
         if (request.isHypothesesSetDifferentiationNeeded() && activatedHypotheses.size() > 1) { // Шаг 7
-            differentiateHypothesesSet();
+            solutions.removeAll(differentiateHypothesesSet());
         }
 
-        if (request.isHypothesesSetMinimizationNeeded()) { // Шаг 8
-            minimizeExplanatorySet();
+        if (request.isHypothesesSetMinimizationNeeded() && activatedHypotheses.size() > 2) { // Шаг 8
+            solutions.removeAll(minimizeExplanatorySet());
         }
 
-        solutions.addAll(activatedHypotheses);
         return solutions.stream().toList();
     }
 
@@ -66,10 +64,49 @@ public class QuerySolver {
                                 .findAny().orElseThrow()
                 ));
 
-        activatedFeatures = parametersNodes.entrySet().stream()
-                .filter(entry -> entry.getValue().checkFeatureActivationCondition(entry.getKey().getAttributeValue()))
+        activatedFeatures.addAll(parametersNodes.entrySet().stream()
+                .filter(entry -> checkFeatureActivationCondition(entry.getValue().getAttribute().getActivationCondition(),
+                        entry.getKey().getAttributeValue()))
                 .map(Map.Entry::getValue)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+        inactivateFeatures.addAll(parametersNodes.entrySet().stream()
+                .filter(entry -> !checkFeatureActivationCondition(entry.getValue().getAttribute().getActivationCondition(),
+                        entry.getKey().getAttributeValue()))
+                .map(Map.Entry::getValue)
+                .collect(Collectors.toSet()));
+    }
+
+    public boolean checkFeatureActivationCondition(String activationCondion, String input) {
+        if (activationCondion.matches("\\d+:\\d+")) {
+            return checkRangeCondition(activationCondion, input);
+        } else if (activationCondion.matches("\\[\\d+(,\\d+)*\\]")) {
+            return checkDiscreteCondition(activationCondion, input);
+        } else {
+            return checkStringCondition(activationCondion, input);
+        }
+    }
+
+    private boolean checkRangeCondition(String condition, String input) {
+        String[] parts = condition.split(":");
+        int start = Integer.parseInt(parts[0]);
+        int end = Integer.parseInt(parts[1]);
+
+        try {
+            int value = Integer.parseInt(input);
+            return value >= start && value <= end;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private boolean checkDiscreteCondition(String condition, String input) {
+        String trimmedCondition = condition.substring(1, condition.length() - 1);
+        List<String> discreteValues = Arrays.asList(trimmedCondition.split(","));
+        return discreteValues.contains(input);
+    }
+
+    private boolean checkStringCondition(String condition, String input) {
+        return condition.equals(input);
     }
 
     private void generateHypothesesSet() {
@@ -84,9 +121,9 @@ public class QuerySolver {
                     relatedNode.getArguments().add(node);
 
                     if (connectionType == ConnectionType.RS) {
-                        activatedHypotheses.add(checkAuxiliaryNode(relatedNode));
+                        activatedHypotheses.addAll(checkAuxiliaryNode(relatedNode));
                     } else if (connectionType == ConnectionType.TRA) {
-                        solutions.add(checkAuxiliaryNode(relatedNode));
+                        solutions.addAll(checkAuxiliaryNode(relatedNode));
                     }
                 }
             }
@@ -95,42 +132,46 @@ public class QuerySolver {
         activatedHypotheses.addAll(solutions);
     }
 
-    private NodeDTO checkAuxiliaryNode(NodeDTO node) {
+    private Set<NodeDTO> checkAuxiliaryNode(NodeDTO node) {
         if (isAndNodeActivated(node) || isOrNodeActivated(node)) {
-            NodeDTO nextNode = node.getOutgoingConnections().keySet().stream().findFirst().orElseThrow();
-            nextNode.getArguments().addAll(node.getArguments());
-            return nextNode;
+            Set<NodeDTO> relatedHypotheses = node.getOutgoingConnections().keySet().stream().
+                    filter(hypothesis -> hypothesis.getNodeType() == NodeType.HYPOTHESIS)
+                    .collect(Collectors.toSet());
+            relatedHypotheses.forEach(hypothesis -> hypothesis.setArguments(node.getArguments()));
+            return relatedHypotheses;
         }
-        return node;
+        return Collections.singleton(node);
     }
 
     public boolean isAndNodeActivated(NodeDTO node) {
-        return node.getNodeType() == NodeType.AND && activatedFeatures.containsAll(node.getIncomingConnections());
+        return node.getNodeType() == NodeType.AND && activatedFeatures.containsAll(node.getIncomingConnections().keySet());
     }
 
     public boolean isOrNodeActivated(NodeDTO node) {
-        return node.getNodeType() == NodeType.OR && activatedFeatures.stream().anyMatch(node.getIncomingConnections()::contains);
+        return node.getNodeType() == NodeType.OR && activatedFeatures.stream().anyMatch(node.getIncomingConnections().keySet()::contains);
     }
 
     private void expandArgumentsSet() {
-        possibleArguments = activatedHypotheses.stream()
+        possibleArguments.addAll(activatedHypotheses.stream()
                 .flatMap(node -> node.getOutgoingConnections().entrySet().stream()
                         .filter(entry -> entry.getKey().getNodeType() == NodeType.FEATURE
-                                && entry.getValue() == ConnectionType.RS)
+                                && entry.getValue() == ConnectionType.RS && !activatedFeatures.contains(entry.getKey()))
                         .map(Map.Entry::getKey))
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+
+
     }
 
     private void testArguments() {
-        // Запрос к клиенту на подтверждение признаков
+        // Запрос к клиенту для подтверждение признаков
     }
 
     private void reduceHypothesesSetByRejectingArguments() {
         Set<NodeDTO> hypothesesToRemove = new HashSet<>();
 
         for (NodeDTO hypothesis : activatedHypotheses) {
-            for (NodeDTO relatedNode : hypothesis.getOutgoingConnections().keySet()) {
-                if (activatedFeatures.contains(relatedNode) && hypothesis.getOutgoingConnections().get(relatedNode) == ConnectionType.S) {
+            for (NodeDTO relatedNode : hypothesis.getIncomingConnections().keySet()) {
+                if (activatedFeatures.contains(relatedNode) && hypothesis.getIncomingConnections().get(relatedNode) == ConnectionType.S) {
                     hypothesesToRemove.add(hypothesis);
                 }
             }
@@ -143,7 +184,7 @@ public class QuerySolver {
 
         for (NodeDTO hypothesis : activatedHypotheses) {
             for (NodeDTO relatedNode : hypothesis.getOutgoingConnections().keySet()) {
-                if (nonactivatedFeatures.contains(relatedNode) && hypothesis.getOutgoingConnections().get(relatedNode) == ConnectionType.TRA) {
+                if (inactivateFeatures.contains(relatedNode) && hypothesis.getOutgoingConnections().get(relatedNode) == ConnectionType.TRA) {
                     hypothesesToRemove.add(hypothesis);
                 }
             }
@@ -151,24 +192,21 @@ public class QuerySolver {
         activatedHypotheses.removeAll(hypothesesToRemove);
     }
 
-    private void differentiateHypothesesSet() {
-        Set<NodeDTO> hypothesesToRemove = activatedHypotheses.stream()
+    private Set<NodeDTO> differentiateHypothesesSet() {
+        return activatedHypotheses.stream()
                 .flatMap(hypothesis -> activatedHypotheses.stream()
                         .filter(otherHypothesis -> hypothesis != otherHypothesis && hypothesis.getArguments().containsAll(otherHypothesis.getArguments()))
                         .map(otherHypothesis ->
                                 hypothesis.getArguments().size() >= otherHypothesis.getArguments().size() ? otherHypothesis : hypothesis))
                 .collect(Collectors.toSet());
-
-        activatedHypotheses.removeAll(hypothesesToRemove);
     }
 
-    private void minimizeExplanatorySet() {
+    private Set<NodeDTO> minimizeExplanatorySet() {
         boolean found = true;
+        Set<NodeDTO> hypothesesToRemove = new HashSet<>();
 
         while (found && activatedHypotheses.size() > 2) {
             found = false;
-
-            Set<NodeDTO> hypothesesToRemove = new HashSet<>();
 
             for (NodeDTO hypothesis : activatedHypotheses) {
                 Set<NodeDTO> combinedArguments = new HashSet<>();
@@ -184,8 +222,7 @@ public class QuerySolver {
                 }
             }
 
-            activatedHypotheses.removeAll(hypothesesToRemove);
         }
-
+        return hypothesesToRemove;
     }
 }

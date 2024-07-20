@@ -17,7 +17,8 @@ public class RequestDTO {
     private final boolean HypothesesSetMinimizationNeeded;
 
     @Getter
-    public class Parameter {
+    @AllArgsConstructor
+    public static class Parameter {
         private Long featureId;
         private String attributeValue;
     }

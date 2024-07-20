@@ -3,6 +3,7 @@ package org.example.domain.entitiy;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.example.domain.types.AccessLevel;
 
 import java.io.Serializable;
@@ -11,7 +12,8 @@ import java.util.Objects;
 @Entity
 @Table(name = "user_kb_access")
 @Getter
-public class UserKbAccess {
+@AllArgsConstructor
+public class UserKbAccess implements Serializable{
     @EmbeddedId
     private UserKbAccessId id;
 
@@ -24,9 +26,12 @@ public class UserKbAccess {
     @JoinColumn(name = "user_id")
     private User user;
 
+    public UserKbAccess() {
+    }
+
     @Embeddable
     @Getter
-    @AllArgsConstructor
+    @NoArgsConstructor
     public static class UserKbAccessId implements Serializable {
         @Column(name = "user_id")
         private Long userId;

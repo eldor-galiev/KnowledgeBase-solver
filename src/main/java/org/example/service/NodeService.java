@@ -3,7 +3,9 @@ package org.example.service;
 import lombok.AllArgsConstructor;
 import org.example.domain.DTO.NodeDTO;
 import org.example.domain.DTO.SectionDTO;
+import org.example.domain.entitiy.Attribute;
 import org.example.domain.entitiy.Node;
+import org.example.domain.types.NodeType;
 import org.example.repository.NodeRepository;
 import org.springframework.stereotype.Service;
 
@@ -25,15 +27,20 @@ public class NodeService {
         nodeDto.setName(node.getName());
         nodeDto.setNodeType(node.getNodeType());
         nodeDto.setOutgoingConnections(new HashMap<>());
-        nodeDto.setIncomingConnections(new ArrayList<>());
+        nodeDto.setIncomingConnections(new HashMap<>());
         nodeDto.setArguments(new HashSet<>());
+
+        if (node.getNodeType() == NodeType.FEATURE){
+            Attribute attribute = node.getNodeAttribute().getAttribute();
+            nodeDto.setAttribute(new NodeDTO.AttributeDto(attribute.getName(), attribute.getValueArea(), node.getNodeAttribute().getActivationCondition()));
+        }
         cache.put(node.getId(), nodeDto);
 
         node.getNodeConnections().stream().map(connection -> Map.entry(connection.getTargetNode(), connection.getConnectionType()))
         .forEach(entry -> {
             NodeDTO targetNodeDto = convertToDto(entry.getKey(), cache);
             nodeDto.getOutgoingConnections().put(targetNodeDto, entry.getValue());
-            targetNodeDto.getIncomingConnections().add(nodeDto);
+            targetNodeDto.getIncomingConnections().put(nodeDto, entry.getValue());
         });
 
         return nodeDto;

@@ -3,6 +3,7 @@ package org.example.domain.entitiy;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -14,7 +15,7 @@ public class NodeAttribute {
     @EmbeddedId
     private NodeAttributeId id;
 
-    @ManyToOne
+    @OneToOne
     @MapsId("nodeId")
     @JoinColumn(name = "node_id")
     private Node node;
@@ -27,8 +28,11 @@ public class NodeAttribute {
     @Column(name = "activation_condition")
     private String activationCondition;
 
+    public NodeAttribute() {
+    }
+
     @Embeddable
-    @AllArgsConstructor
+    @NoArgsConstructor
     @Getter
     public static class NodeAttributeId implements Serializable {
         @Column(name = "node_id")

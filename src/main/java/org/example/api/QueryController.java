@@ -22,18 +22,15 @@ public class QueryController {
     private UserService userService;
     private QuerySolver querySolver;
 
-    @GetMapping("/solve")
-    public ResponseEntity<AnswerDTO> solve(@RequestBody RequestDTO request) {
+    @GetMapping(value = "/solve")
+    public ResponseEntity<List<AnswerDto>> solve(@RequestBody RequestDTO request) {
         if (!checkAccess(request.getUserId(), request.getKbId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
         }
 
-        querySolver.solve(request, getAllNodesOfKnowledgeBase(request.getKbId()));
+        List<NodeDTO> solutions = querySolver.solve(request, getAllNodesOfKnowledgeBase(request.getKbId()));
 
-        AnswerDTO answer = new AnswerDTO();
-        // упаковка ответа алгоритма
-
-        return ResponseEntity.ok(answer);
+        return ResponseEntity.ok(solutions.stream().map(AnswerDto::fromNodeDTO).toList());
     }
 
     private List<NodeDTO> getAllNodesOfKnowledgeBase(Long kbId) {

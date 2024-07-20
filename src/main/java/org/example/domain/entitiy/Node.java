@@ -25,8 +25,8 @@ public class Node {
     @Column(nullable = false)
     private NodeType nodeType;
 
-    @OneToMany(mappedBy = "node", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<NodeAttribute> nodeAttributes;
+    @OneToOne(mappedBy = "node", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private NodeAttribute nodeAttribute;
 
     @OneToMany(mappedBy = "sourceNode", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<NodeConnection> nodeConnections;
