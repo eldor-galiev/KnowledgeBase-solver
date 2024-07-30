@@ -6,9 +6,7 @@ import lombok.Setter;
 import org.example.domain.types.ConnectionType;
 import org.example.domain.types.NodeType;
 
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Set;
 
 @Getter
@@ -21,6 +19,7 @@ public class NodeDTO {
     private HashMap<NodeDTO, ConnectionType> outgoingConnections;
     private HashMap<NodeDTO, ConnectionType> incomingConnections;
     private Set<NodeDTO> arguments;
+    private boolean activated;
 
     @Setter
     @Getter

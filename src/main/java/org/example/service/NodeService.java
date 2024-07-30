@@ -29,6 +29,7 @@ public class NodeService {
         nodeDto.setOutgoingConnections(new HashMap<>());
         nodeDto.setIncomingConnections(new HashMap<>());
         nodeDto.setArguments(new HashSet<>());
+        nodeDto.setActivated(false);
 
         if (node.getNodeType() == NodeType.FEATURE){
             Attribute attribute = node.getNodeAttribute().getAttribute();

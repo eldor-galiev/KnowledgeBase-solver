@@ -40,11 +40,11 @@ public class QuerySolver {
         solutions.addAll(activatedHypotheses); // Шаг 6
 
         if (request.isHypothesesSetDifferentiationNeeded() && activatedHypotheses.size() > 1) { // Шаг 7
-            solutions.removeAll(differentiateHypothesesSet());
+            differentiateHypothesesSet();
         }
 
         if (request.isHypothesesSetMinimizationNeeded() && activatedHypotheses.size() > 2) { // Шаг 8
-            solutions.removeAll(minimizeExplanatorySet());
+            minimizeExplanatorySet();
         }
 
         return solutions.stream().toList();
@@ -69,6 +69,7 @@ public class QuerySolver {
                         entry.getKey().getAttributeValue()))
                 .map(Map.Entry::getValue)
                 .collect(Collectors.toSet()));
+        activatedFeatures.forEach(feature -> feature.setActivated(true));
         inactivateFeatures.addAll(parametersNodes.entrySet().stream()
                 .filter(entry -> !checkFeatureActivationCondition(entry.getValue().getAttribute().getActivationCondition(),
                         entry.getKey().getAttributeValue()))
@@ -76,13 +77,13 @@ public class QuerySolver {
                 .collect(Collectors.toSet()));
     }
 
-    public boolean checkFeatureActivationCondition(String activationCondion, String input) {
-        if (activationCondion.matches("\\d+:\\d+")) {
-            return checkRangeCondition(activationCondion, input);
-        } else if (activationCondion.matches("\\[\\d+(,\\d+)*\\]")) {
-            return checkDiscreteCondition(activationCondion, input);
+    public boolean checkFeatureActivationCondition(String activationCondition, String input) {
+        if (activationCondition.matches("\\d+:\\d+")) {
+            return checkRangeCondition(activationCondition, input);
+        } else if (activationCondition.matches("\\[\\d+(,\\d+)*\\]")) {
+            return checkDiscreteCondition(activationCondition, input);
         } else {
-            return checkStringCondition(activationCondion, input);
+            return checkStringCondition(activationCondition, input);
         }
     }
 
@@ -110,21 +111,16 @@ public class QuerySolver {
     }
 
     private void generateHypothesesSet() {
-        for (NodeDTO node : activatedFeatures) {
-            Map<NodeDTO, ConnectionType> connections = node.getOutgoingConnections();
+        for (NodeDTO feature : activatedFeatures) {
+            Map<NodeDTO, ConnectionType> connections = feature.getOutgoingConnections();
 
             for (Map.Entry<NodeDTO, ConnectionType> entry : connections.entrySet()) {
                 NodeDTO relatedNode = entry.getKey();
                 ConnectionType connectionType = entry.getValue();
 
-                if (relatedNode.getNodeType() != NodeType.FEATURE) {
-                    relatedNode.getArguments().add(node);
-
-                    if (connectionType == ConnectionType.RS) {
-                        activatedHypotheses.addAll(checkAuxiliaryNode(relatedNode));
-                    } else if (connectionType == ConnectionType.TRA) {
-                        solutions.addAll(checkAuxiliaryNode(relatedNode));
-                    }
+                if (relatedNode.getNodeType() != NodeType.FEATURE && connectionType != ConnectionType.S) {
+                    relatedNode.getArguments().add(feature);
+                    activateNode(relatedNode, connectionType);
                 }
             }
         }
@@ -132,23 +128,45 @@ public class QuerySolver {
         activatedHypotheses.addAll(solutions);
     }
 
-    private Set<NodeDTO> checkAuxiliaryNode(NodeDTO node) {
-        if (isAndNodeActivated(node) || isOrNodeActivated(node)) {
-            Set<NodeDTO> relatedHypotheses = node.getOutgoingConnections().keySet().stream().
-                    filter(hypothesis -> hypothesis.getNodeType() == NodeType.HYPOTHESIS)
-                    .collect(Collectors.toSet());
-            relatedHypotheses.forEach(hypothesis -> hypothesis.setArguments(node.getArguments()));
-            return relatedHypotheses;
+    private void activateNode(NodeDTO node, ConnectionType connectionType) {
+        if ((node.getNodeType() == NodeType.OR || node.getNodeType() == NodeType.AND) && isAuxiliaryNodeActivated(node)) {
+            Map<NodeDTO, ConnectionType> connections = node.getOutgoingConnections().entrySet().stream()
+                    .filter(entry -> entry.getKey().getNodeType() != NodeType.FEATURE
+                            && entry.getValue() != ConnectionType.S)
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+            for (Map.Entry<NodeDTO, ConnectionType> entry : connections.entrySet()) {
+                NodeDTO relatedNode = entry.getKey();
+                ConnectionType relatedConnectionType = entry.getValue();
+
+                relatedNode.getArguments().addAll(node.getArguments());
+                activateNode(relatedNode, relatedConnectionType);
+            }
+
         }
-        return Collections.singleton(node);
+        else if (node.getNodeType() == NodeType.HYPOTHESIS) {
+            if (connectionType == ConnectionType.RS) {
+                activatedHypotheses.add(node);
+            } else if (connectionType == ConnectionType.TRA) {
+                solutions.add(node);
+            }
+            node.setActivated(true);
+        }
+
     }
 
-    public boolean isAndNodeActivated(NodeDTO node) {
-        return node.getNodeType() == NodeType.AND && activatedFeatures.containsAll(node.getIncomingConnections().keySet());
-    }
-
-    public boolean isOrNodeActivated(NodeDTO node) {
-        return node.getNodeType() == NodeType.OR && activatedFeatures.stream().anyMatch(node.getIncomingConnections().keySet()::contains);
+    public boolean isAuxiliaryNodeActivated(NodeDTO node) {
+        if (node.getNodeType() == NodeType.AND
+                && node.getIncomingConnections().keySet().stream().allMatch(NodeDTO::isActivated)) {
+            node.setActivated(true);
+            return true;
+        }
+        if (node.getNodeType() == NodeType.OR
+                && node.getIncomingConnections().keySet().stream().anyMatch(NodeDTO::isActivated)) {
+            node.setActivated(true);
+            return true;
+        }
+        return false;
     }
 
     private void expandArgumentsSet() {
@@ -173,6 +191,7 @@ public class QuerySolver {
             for (NodeDTO relatedNode : hypothesis.getIncomingConnections().keySet()) {
                 if (activatedFeatures.contains(relatedNode) && hypothesis.getIncomingConnections().get(relatedNode) == ConnectionType.S) {
                     hypothesesToRemove.add(hypothesis);
+                    hypothesis.setActivated(false);
                 }
             }
         }
@@ -186,31 +205,43 @@ public class QuerySolver {
             for (NodeDTO relatedNode : hypothesis.getOutgoingConnections().keySet()) {
                 if (inactivateFeatures.contains(relatedNode) && hypothesis.getOutgoingConnections().get(relatedNode) == ConnectionType.TRA) {
                     hypothesesToRemove.add(hypothesis);
+                    hypothesis.setActivated(false);
                 }
             }
         }
         activatedHypotheses.removeAll(hypothesesToRemove);
     }
 
-    private Set<NodeDTO> differentiateHypothesesSet() {
-        return activatedHypotheses.stream()
-                .flatMap(hypothesis -> activatedHypotheses.stream()
-                        .filter(otherHypothesis -> hypothesis != otherHypothesis && hypothesis.getArguments().containsAll(otherHypothesis.getArguments()))
-                        .map(otherHypothesis ->
-                                hypothesis.getArguments().size() >= otherHypothesis.getArguments().size() ? otherHypothesis : hypothesis))
-                .collect(Collectors.toSet());
+    private void differentiateHypothesesSet() {
+        Set<NodeDTO> hypothesesToRemove = new HashSet<>();
+        for (NodeDTO hypothesis : solutions) {
+            for (NodeDTO otherHypothesis : solutions) {
+                if (hypothesis != otherHypothesis && hypothesis.getArguments().containsAll(otherHypothesis.getArguments())) {
+                    if (hypothesis.getArguments().size() > otherHypothesis.getArguments().size()) {
+                        hypothesesToRemove.add(otherHypothesis);
+                        otherHypothesis.setActivated(false);
+                    } else if (hypothesis.getArguments().size() < otherHypothesis.getArguments().size()) {
+                        hypothesesToRemove.add(hypothesis);
+                        hypothesis.setActivated(false);
+                    }
+                }
+            }
+        }
+        solutions.removeAll(hypothesesToRemove);
     }
 
-    private Set<NodeDTO> minimizeExplanatorySet() {
+    private void minimizeExplanatorySet() {
         boolean found = true;
         Set<NodeDTO> hypothesesToRemove = new HashSet<>();
 
-        while (found && activatedHypotheses.size() > 2) {
+        while (found) {
             found = false;
+            solutions.removeAll(hypothesesToRemove);
+            hypothesesToRemove.clear();
 
-            for (NodeDTO hypothesis : activatedHypotheses) {
+            for (NodeDTO hypothesis : solutions) {
                 Set<NodeDTO> combinedArguments = new HashSet<>();
-                for (NodeDTO otherHypothesis : activatedHypotheses) {
+                for (NodeDTO otherHypothesis : solutions) {
                     if (!hypothesis.equals(otherHypothesis)) {
                         combinedArguments.addAll(otherHypothesis.getArguments());
                     }
@@ -218,11 +249,12 @@ public class QuerySolver {
 
                 if (combinedArguments.containsAll(hypothesis.getArguments())) {
                     hypothesesToRemove.add(hypothesis);
+                    hypothesis.setActivated(false);
                     found = true;
+                    break;
                 }
             }
 
         }
-        return hypothesesToRemove;
     }
 }

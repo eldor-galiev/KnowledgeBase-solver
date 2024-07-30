@@ -27,7 +27,7 @@ public class AnswerDto {
                 new ArrayList<>() :
                 nodeDTO.getArguments().stream()
                         .map(AnswerDto::fromNodeDTO)
-                        .collect(Collectors.toList());
+                        .toList();
 
         return new AnswerDto(nodeDTO.getId(), nodeDTO.getName(), arguments);
     }
